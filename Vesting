@@ -1,0 +1,279 @@
+// SPDX-License-Identifier: MIT
+pragma solidity 0.8.34;
+
+import "@openzeppelin/contracts@5.1.0/token/ERC20/IERC20.sol";
+import "@openzeppelin/contracts@5.1.0/token/ERC20/utils/SafeERC20.sol";
+import "@openzeppelin/contracts@5.1.0/utils/ReentrancyGuard.sol";
+
+/// @title 1M BLOCKS NOVA Vesting
+/// @author 1M BLOCKS
+/// @notice Fixed vesting contract for the NOVA project/team allocation.
+/// @dev
+/// Design overview:
+/// - This contract manages exactly 5,000,000 NOVA for the project/team allocation.
+/// - The vesting schedule is permanently fixed and cannot be modified after deployment.
+/// - First claim time: 2028-07-25 08:00:00 UTC for 250,000 NOVA.
+/// - Thereafter, 250,000 NOVA becomes claimable on each fixed quarterly date.
+/// - Only the designated beneficiary may claim vested NOVA.
+/// - No owner, no admin controls, no pause, and no NOVA recovery path are provided.
+contract NOVAVesting is ReentrancyGuard {
+    using SafeERC20 for IERC20;
+
+    // =============================================================
+    //                           CONSTANTS
+    // =============================================================
+
+    /// @dev Total fixed project/team allocation: 5,000,000 NOVA with 18 decimals.
+    uint256 private constant _TOTAL_ALLOCATION = 5_000_000 * 1e18;
+
+    /// @dev Fixed tranche amount: 250,000 NOVA.
+    uint256 private constant _TRANCHE_AMOUNT = 250_000 * 1e18;
+
+    /// @dev Total number of vesting tranches.
+    uint256 private constant _TOTAL_TRANCHES = 20;
+
+    /// @dev First vesting timestamp: 2028-07-25 08:00:00 UTC.
+    uint256 private constant _FIRST_VESTING_TIME = 1848124800;
+
+    /// @dev Final vesting timestamp: 2033-04-25 08:00:00 UTC.
+    uint256 private constant _FINAL_VESTING_TIME = 1998028800;
+
+    // =============================================================
+    //                             ERRORS
+    // =============================================================
+
+    error InvalidTokenAddress();
+    error InvalidBeneficiary();
+    error UnauthorizedCaller();
+    error NothingToClaim();
+    error InsufficientVestedTokenBalance(uint256 requiredAmount, uint256 availableAmount);
+    error InvalidTrancheIndex();
+    error DirectETHTransferNotAllowed();
+
+    // =============================================================
+    //                            STORAGE
+    // =============================================================
+
+    /// @dev NOVA token subject to vesting.
+    IERC20 public immutable vestedToken;
+
+    /// @dev Sole beneficiary authorized to claim vested NOVA.
+    address public immutable beneficiary;
+
+    /// @dev Total NOVA already claimed by the beneficiary.
+    uint256 public totalClaimed;
+
+    // =============================================================
+    //                            EVENTS
+    // =============================================================
+
+    /// @notice Emitted when vested NOVA is claimed by the beneficiary.
+    /// @param beneficiary_ Address receiving the claimed NOVA.
+    /// @param amount Amount claimed in this transaction.
+    /// @param totalClaimedAmount Updated total claimed amount.
+    event TokensClaimed(address indexed beneficiary_, uint256 amount, uint256 totalClaimedAmount);
+
+    // =============================================================
+    //                          CONSTRUCTOR
+    // =============================================================
+
+    /// @notice Deploys the NOVA vesting contract.
+    /// @param vestedToken_ NOVA token address subject to vesting.
+    /// @param beneficiary_ Address authorized to claim vested NOVA.
+    constructor(address vestedToken_, address beneficiary_) {
+        if (vestedToken_ == address(0)) revert InvalidTokenAddress();
+        if (beneficiary_ == address(0)) revert InvalidBeneficiary();
+
+        vestedToken = IERC20(vestedToken_);
+        beneficiary = beneficiary_;
+    }
+
+    // =============================================================
+    //                       CORE FUNCTIONS
+    // =============================================================
+
+    /// @notice Claims all currently vested and unclaimed NOVA.
+    function claim() external nonReentrant {
+        if (msg.sender != beneficiary) revert UnauthorizedCaller();
+
+        uint256 amount = getClaimableAmount();
+        if (amount == 0) revert NothingToClaim();
+
+        uint256 availableAmount = vestedToken.balanceOf(address(this));
+        if (availableAmount < amount) {
+            revert InsufficientVestedTokenBalance(amount, availableAmount);
+        }
+
+        totalClaimed += amount;
+        vestedToken.safeTransfer(beneficiary, amount);
+
+        emit TokensClaimed(beneficiary, amount, totalClaimed);
+    }
+
+    // =============================================================
+    //                      VIEW FUNCTIONS
+    // =============================================================
+
+    /// @notice Returns the total NOVA vested up to the current block timestamp.
+    function getVestedAmount() public view returns (uint256 vestedAmount) {
+        uint256 unlockedTrancheCount = getUnlockedTrancheCount();
+        if (unlockedTrancheCount == 0) {
+            return 0;
+        }
+
+        return unlockedTrancheCount * _TRANCHE_AMOUNT;
+    }
+
+    /// @notice Returns the currently claimable NOVA amount.
+    function getClaimableAmount() public view returns (uint256 claimableAmount) {
+        uint256 vestedAmount = getVestedAmount();
+        uint256 claimedAmount = totalClaimed;
+
+        if (vestedAmount <= claimedAmount) {
+            return 0;
+        }
+
+        return vestedAmount - claimedAmount;
+    }
+
+    /// @notice Returns the remaining unclaimed allocation tracked by this vesting contract.
+    /// @dev This is not the live token balance of the contract.
+    function getRemainingAllocation() external view returns (uint256 remainingAllocation) {
+        return _TOTAL_ALLOCATION - totalClaimed;
+    }
+
+    /// @notice Returns the number of currently unlocked tranches.
+    function getUnlockedTrancheCount() public view returns (uint256 unlockedTrancheCount) {
+        uint256 currentTimestamp = block.timestamp;
+
+        if (currentTimestamp < _FIRST_VESTING_TIME) {
+            return 0;
+        }
+
+        if (currentTimestamp >= _FINAL_VESTING_TIME) {
+            return _TOTAL_TRANCHES;
+        }
+
+        for (uint256 i = _TOTAL_TRANCHES; i > 0; ) {
+            unchecked {
+                --i;
+            }
+
+            if (currentTimestamp >= _getReleaseTimeByIndex(i)) {
+                return i + 1;
+            }
+        }
+
+        return 0;
+    }
+
+    /// @notice Returns the configured beneficiary address.
+    function getBeneficiary() external view returns (address currentBeneficiary) {
+        return beneficiary;
+    }
+
+    /// @notice Returns the fixed NOVA allocation tracked by this vesting contract.
+    function getTotalAllocation() external pure returns (uint256 totalAllocation) {
+        return _TOTAL_ALLOCATION;
+    }
+
+    /// @notice Returns the fixed tranche amount.
+    function getTrancheAmount() external pure returns (uint256 trancheAmount) {
+        return _TRANCHE_AMOUNT;
+    }
+
+    /// @notice Returns the total number of vesting tranches.
+    function getTotalTranches() external pure returns (uint256 totalTranches) {
+        return _TOTAL_TRANCHES;
+    }
+
+    /// @notice Returns the first vesting timestamp.
+    function getFirstVestingTime() external pure returns (uint256 firstVestingTime) {
+        return _FIRST_VESTING_TIME;
+    }
+
+    /// @notice Returns the final vesting timestamp.
+    function getFinalVestingTime() external pure returns (uint256 finalVestingTime) {
+        return _FINAL_VESTING_TIME;
+    }
+
+    /// @notice Returns the actual NOVA balance currently held by this vesting contract.
+    function getVaultTokenBalance() external view returns (uint256 vaultTokenBalance) {
+        return vestedToken.balanceOf(address(this));
+    }
+
+    /// @notice Returns the NOVA shortfall required to fully fund the remaining vesting obligation.
+    function getFundingDeficit() external view returns (uint256 fundingDeficit) {
+        uint256 remainingRequired = _TOTAL_ALLOCATION - totalClaimed;
+        uint256 currentBalance = vestedToken.balanceOf(address(this));
+
+        if (currentBalance >= remainingRequired) {
+            return 0;
+        }
+
+        return remainingRequired - currentBalance;
+    }
+
+    /// @notice Returns the release timestamp for a tranche index.
+    /// @param trancheIndex Tranche index from 0 to 19.
+    function getReleaseTime(uint256 trancheIndex) external pure returns (uint256 releaseTime) {
+        if (trancheIndex >= _TOTAL_TRANCHES) revert InvalidTrancheIndex();
+        return _getReleaseTimeByIndex(trancheIndex);
+    }
+
+    /// @notice Returns the release amount for a tranche index.
+    /// @param trancheIndex Tranche index from 0 to 19.
+    function getReleaseAmount(uint256 trancheIndex) external pure returns (uint256 releaseAmount) {
+        if (trancheIndex >= _TOTAL_TRANCHES) revert InvalidTrancheIndex();
+        return _TRANCHE_AMOUNT;
+    }
+
+    /// @notice Returns whether a tranche is unlocked at the current timestamp.
+    /// @param trancheIndex Tranche index from 0 to 19.
+    function isTrancheUnlocked(uint256 trancheIndex) external view returns (bool unlocked) {
+        if (trancheIndex >= _TOTAL_TRANCHES) revert InvalidTrancheIndex();
+        return block.timestamp >= _getReleaseTimeByIndex(trancheIndex);
+    }
+
+    // =============================================================
+    //                      INTERNAL HELPERS
+    // =============================================================
+
+    /// @dev Returns the fixed release timestamp for a tranche index.
+    function _getReleaseTimeByIndex(uint256 trancheIndex) internal pure returns (uint256 releaseTime) {
+        if (trancheIndex == 0) return 1848124800;  // 2028-07-25 08:00:00 UTC
+        if (trancheIndex == 1) return 1856073600;  // 2028-10-25 08:00:00 UTC
+        if (trancheIndex == 2) return 1864022400;  // 2029-01-25 08:00:00 UTC
+        if (trancheIndex == 3) return 1871798400;  // 2029-04-25 08:00:00 UTC
+        if (trancheIndex == 4) return 1879660800;  // 2029-07-25 08:00:00 UTC
+        if (trancheIndex == 5) return 1887609600;  // 2029-10-25 08:00:00 UTC
+        if (trancheIndex == 6) return 1895558400;  // 2030-01-25 08:00:00 UTC
+        if (trancheIndex == 7) return 1903334400;  // 2030-04-25 08:00:00 UTC
+        if (trancheIndex == 8) return 1911196800;  // 2030-07-25 08:00:00 UTC
+        if (trancheIndex == 9) return 1919145600;  // 2030-10-25 08:00:00 UTC
+        if (trancheIndex == 10) return 1927094400; // 2031-01-25 08:00:00 UTC
+        if (trancheIndex == 11) return 1934870400; // 2031-04-25 08:00:00 UTC
+        if (trancheIndex == 12) return 1942732800; // 2031-07-25 08:00:00 UTC
+        if (trancheIndex == 13) return 1950681600; // 2031-10-25 08:00:00 UTC
+        if (trancheIndex == 14) return 1958630400; // 2032-01-25 08:00:00 UTC
+        if (trancheIndex == 15) return 1966492800; // 2032-04-25 08:00:00 UTC
+        if (trancheIndex == 16) return 1974355200; // 2032-07-25 08:00:00 UTC
+        if (trancheIndex == 17) return 1982304000; // 2032-10-25 08:00:00 UTC
+        if (trancheIndex == 18) return 1990252800; // 2033-01-25 08:00:00 UTC
+        return 1998028800;                         // 2033-04-25 08:00:00 UTC
+    }
+
+    // =============================================================
+    //                    FALLBACK FUNCTIONS
+    // =============================================================
+
+    /// @notice Rejects direct native ETH transfers.
+    receive() external payable {
+        revert DirectETHTransferNotAllowed();
+    }
+
+    /// @notice Rejects unknown calls and direct native ETH transfers.
+    fallback() external payable {
+        revert DirectETHTransferNotAllowed();
+    }
+}
