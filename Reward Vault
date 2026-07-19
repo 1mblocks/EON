@@ -7,16 +7,16 @@ import "@openzeppelin/contracts@5.1.0/access/Ownable2Step.sol";
 import "@openzeppelin/contracts@5.1.0/utils/Pausable.sol";
 import "@openzeppelin/contracts@5.1.0/utils/ReentrancyGuard.sol";
 
-/// @title 1M BLOCKS NOVA Reward Vault
+/// @title 1M BLOCKS EON Reward Vault
 /// @author 1M BLOCKS
-/// @notice Dedicated NOVA reward vault for staking rewards with owner-only funding and staking-contract-only reward releases.
+/// @notice Dedicated EON reward vault for staking rewards with owner-only funding and staking-contract-only reward releases.
 /// @dev
 /// Design overview:
-/// - This vault holds NOVA tokens reserved strictly for staking rewards.
-/// - Only the owner may deposit NOVA reward tokens into the vault.
+/// - This vault holds EON tokens reserved strictly for staking rewards.
+/// - Only the owner may deposit EON reward tokens into the vault.
 /// - Only the configured staking contract may request outbound reward transfers.
 /// - The owner may set the staking contract once, after which the authorized reward caller is permanently fixed.
-/// - No generic NOVA withdrawal function is provided to the owner.
+/// - No generic EON withdrawal function is provided to the owner.
 contract RewardVault is Ownable2Step, Pausable, ReentrancyGuard {
     using SafeERC20 for IERC20;
 
@@ -24,7 +24,7 @@ contract RewardVault is Ownable2Step, Pausable, ReentrancyGuard {
     //                           CONSTANTS
     // =============================================================
 
-    /// @dev NOVA token used for reward funding and reward releases.
+    /// @dev EON token used for reward funding and reward releases.
     IERC20 public immutable rewardToken;
 
     // =============================================================
@@ -49,14 +49,14 @@ contract RewardVault is Ownable2Step, Pausable, ReentrancyGuard {
     /// @dev Address authorized to request reward releases.
     address public stakingContract;
 
-    /// @dev Total NOVA reward tokens explicitly funded into this vault and not yet released.
+    /// @dev Total EON reward tokens explicitly funded into this vault and not yet released.
     uint256 public trackedRewardBalance;
 
     // =============================================================
     //                            EVENTS
     // =============================================================
 
-    /// @notice Emitted when NOVA reward tokens are funded into the vault.
+    /// @notice Emitted when EON reward tokens are funded into the vault.
     /// @param depositor Address performing the funding.
     /// @param amount Amount funded.
     /// @param currentTrackedRewardBalance Updated tracked reward balance.
@@ -82,8 +82,8 @@ contract RewardVault is Ownable2Step, Pausable, ReentrancyGuard {
     //                          CONSTRUCTOR
     // =============================================================
 
-    /// @notice Deploys the NOVA reward vault for the specified token.
-    /// @param rewardToken_ NOVA token address used for reward funding and releases.
+    /// @notice Deploys the EON reward vault for the specified token.
+    /// @param rewardToken_ EON token address used for reward funding and releases.
     constructor(address rewardToken_) Ownable(msg.sender) {
         if (rewardToken_ == address(0)) revert InvalidTokenAddress();
         rewardToken = IERC20(rewardToken_);
@@ -93,14 +93,14 @@ contract RewardVault is Ownable2Step, Pausable, ReentrancyGuard {
     //                       CORE FUNCTIONS
     // =============================================================
 
-    /// @notice Funds the vault with NOVA reward tokens.
+    /// @notice Funds the vault with EON reward tokens.
     /// @dev
     /// Requirements:
     /// - caller must be the owner
     /// - `amount` must be greater than zero
     /// - token transfer must satisfy `received == amount`
     ///
-    /// @param amount Amount of NOVA to fund into the vault.
+    /// @param amount Amount of EON to fund into the vault.
     function fundRewards(uint256 amount) external onlyOwner whenNotPaused {
         if (amount == 0) revert ZeroAmount();
 
@@ -125,14 +125,14 @@ contract RewardVault is Ownable2Step, Pausable, ReentrancyGuard {
         emit StakingContractSet(stakingContract_);
     }
 
-    /// @notice Releases NOVA reward tokens to the configured staking contract.
+    /// @notice Releases EON reward tokens to the configured staking contract.
     /// @dev
     /// Requirements:
     /// - caller must be the configured staking contract
     /// - `amount` must be greater than zero
     /// - vault must hold enough tracked reward balance
     ///
-    /// @param amount Amount of NOVA to release.
+    /// @param amount Amount of EON to release.
     function releaseRewards(uint256 amount) external nonReentrant whenNotPaused {
         if (msg.sender != stakingContract) revert UnauthorizedCaller();
         if (amount == 0) revert ZeroAmount();
@@ -152,7 +152,7 @@ contract RewardVault is Ownable2Step, Pausable, ReentrancyGuard {
     //                      VIEW FUNCTIONS
     // =============================================================
 
-    /// @notice Returns the actual NOVA token balance currently held by the vault.
+    /// @notice Returns the actual EON token balance currently held by the vault.
     function getVaultTokenBalance() external view returns (uint256) {
         return rewardToken.balanceOf(address(this));
     }
@@ -176,7 +176,7 @@ contract RewardVault is Ownable2Step, Pausable, ReentrancyGuard {
         _unpause();
     }
 
-    /// @notice Recovers non-NOVA ERC20 tokens accidentally sent to this contract.
+    /// @notice Recovers non-EON ERC20 tokens accidentally sent to this contract.
     /// @param tokenAddress ERC20 token address to recover.
     /// @param amount Amount to recover.
     function recoverForeignToken(address tokenAddress, uint256 amount) external nonReentrant onlyOwner {
