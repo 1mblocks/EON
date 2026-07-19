@@ -5,28 +5,28 @@ import "@openzeppelin/contracts@5.1.0/token/ERC20/IERC20.sol";
 import "@openzeppelin/contracts@5.1.0/token/ERC20/utils/SafeERC20.sol";
 import "@openzeppelin/contracts@5.1.0/utils/ReentrancyGuard.sol";
 
-/// @title 1M BLOCKS NOVA Vesting
+/// @title 1M BLOCKS EON Vesting
 /// @author 1M BLOCKS
-/// @notice Fixed vesting contract for the NOVA project/team allocation.
+/// @notice Fixed vesting contract for the EON project/team allocation.
 /// @dev
 /// Design overview:
-/// - This contract manages exactly 5,000,000 NOVA for the project/team allocation.
+/// - This contract manages exactly 5,000,000 EON for the project/team allocation.
 /// - The vesting schedule is permanently fixed and cannot be modified after deployment.
-/// - First claim time: 2028-07-25 08:00:00 UTC for 250,000 NOVA.
-/// - Thereafter, 250,000 NOVA becomes claimable on each fixed quarterly date.
-/// - Only the designated beneficiary may claim vested NOVA.
-/// - No owner, no admin controls, no pause, and no NOVA recovery path are provided.
-contract NOVAVesting is ReentrancyGuard {
+/// - First claim time: 2028-07-25 08:00:00 UTC for 250,000 EON.
+/// - Thereafter, 250,000 EON becomes claimable on each fixed quarterly date.
+/// - Only the designated beneficiary may claim vested EON.
+/// - No owner, no admin controls, no pause, and no EON recovery path are provided.
+contract EONVesting is ReentrancyGuard {
     using SafeERC20 for IERC20;
 
     // =============================================================
     //                           CONSTANTS
     // =============================================================
 
-    /// @dev Total fixed project/team allocation: 5,000,000 NOVA with 18 decimals.
+    /// @dev Total fixed project/team allocation: 5,000,000 EON with 18 decimals.
     uint256 private constant _TOTAL_ALLOCATION = 5_000_000 * 1e18;
 
-    /// @dev Fixed tranche amount: 250,000 NOVA.
+    /// @dev Fixed tranche amount: 250,000 EON.
     uint256 private constant _TRANCHE_AMOUNT = 250_000 * 1e18;
 
     /// @dev Total number of vesting tranches.
@@ -54,21 +54,21 @@ contract NOVAVesting is ReentrancyGuard {
     //                            STORAGE
     // =============================================================
 
-    /// @dev NOVA token subject to vesting.
+    /// @dev EON token subject to vesting.
     IERC20 public immutable vestedToken;
 
-    /// @dev Sole beneficiary authorized to claim vested NOVA.
+    /// @dev Sole beneficiary authorized to claim vested EON.
     address public immutable beneficiary;
 
-    /// @dev Total NOVA already claimed by the beneficiary.
+    /// @dev Total EON already claimed by the beneficiary.
     uint256 public totalClaimed;
 
     // =============================================================
     //                            EVENTS
     // =============================================================
 
-    /// @notice Emitted when vested NOVA is claimed by the beneficiary.
-    /// @param beneficiary_ Address receiving the claimed NOVA.
+    /// @notice Emitted when vested EON is claimed by the beneficiary.
+    /// @param beneficiary_ Address receiving the claimed EON.
     /// @param amount Amount claimed in this transaction.
     /// @param totalClaimedAmount Updated total claimed amount.
     event TokensClaimed(address indexed beneficiary_, uint256 amount, uint256 totalClaimedAmount);
@@ -77,9 +77,9 @@ contract NOVAVesting is ReentrancyGuard {
     //                          CONSTRUCTOR
     // =============================================================
 
-    /// @notice Deploys the NOVA vesting contract.
-    /// @param vestedToken_ NOVA token address subject to vesting.
-    /// @param beneficiary_ Address authorized to claim vested NOVA.
+    /// @notice Deploys the EON vesting contract.
+    /// @param vestedToken_ EON token address subject to vesting.
+    /// @param beneficiary_ Address authorized to claim vested EON.
     constructor(address vestedToken_, address beneficiary_) {
         if (vestedToken_ == address(0)) revert InvalidTokenAddress();
         if (beneficiary_ == address(0)) revert InvalidBeneficiary();
@@ -92,7 +92,7 @@ contract NOVAVesting is ReentrancyGuard {
     //                       CORE FUNCTIONS
     // =============================================================
 
-    /// @notice Claims all currently vested and unclaimed NOVA.
+    /// @notice Claims all currently vested and unclaimed EON.
     function claim() external nonReentrant {
         if (msg.sender != beneficiary) revert UnauthorizedCaller();
 
@@ -114,7 +114,7 @@ contract NOVAVesting is ReentrancyGuard {
     //                      VIEW FUNCTIONS
     // =============================================================
 
-    /// @notice Returns the total NOVA vested up to the current block timestamp.
+    /// @notice Returns the total EON vested up to the current block timestamp.
     function getVestedAmount() public view returns (uint256 vestedAmount) {
         uint256 unlockedTrancheCount = getUnlockedTrancheCount();
         if (unlockedTrancheCount == 0) {
@@ -124,7 +124,7 @@ contract NOVAVesting is ReentrancyGuard {
         return unlockedTrancheCount * _TRANCHE_AMOUNT;
     }
 
-    /// @notice Returns the currently claimable NOVA amount.
+    /// @notice Returns the currently claimable EON amount.
     function getClaimableAmount() public view returns (uint256 claimableAmount) {
         uint256 vestedAmount = getVestedAmount();
         uint256 claimedAmount = totalClaimed;
@@ -172,7 +172,7 @@ contract NOVAVesting is ReentrancyGuard {
         return beneficiary;
     }
 
-    /// @notice Returns the fixed NOVA allocation tracked by this vesting contract.
+    /// @notice Returns the fixed EON allocation tracked by this vesting contract.
     function getTotalAllocation() external pure returns (uint256 totalAllocation) {
         return _TOTAL_ALLOCATION;
     }
@@ -197,12 +197,12 @@ contract NOVAVesting is ReentrancyGuard {
         return _FINAL_VESTING_TIME;
     }
 
-    /// @notice Returns the actual NOVA balance currently held by this vesting contract.
+    /// @notice Returns the actual EON balance currently held by this vesting contract.
     function getVaultTokenBalance() external view returns (uint256 vaultTokenBalance) {
         return vestedToken.balanceOf(address(this));
     }
 
-    /// @notice Returns the NOVA shortfall required to fully fund the remaining vesting obligation.
+    /// @notice Returns the EON shortfall required to fully fund the remaining vesting obligation.
     function getFundingDeficit() external view returns (uint256 fundingDeficit) {
         uint256 remainingRequired = _TOTAL_ALLOCATION - totalClaimed;
         uint256 currentBalance = vestedToken.balanceOf(address(this));
